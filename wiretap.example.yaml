@@ -1,0 +1,62 @@
+# wiretap configuration — copy to ~/.wiretap/wiretap.yaml (or set $WIRETAP_DIR/wiretap.yaml)
+#
+# data dir resolution: --dir flag > $WIRETAP_DIR > ~/.wiretap
+# the `dir:` field below is informational only — the actual dir comes from the cli/env
+
+dir: ~/.wiretap
+
+store:
+  # JSONL files (rpcx-<startUnix>.jsonl, http-<startUnix>.jsonl) — append-only, single file per process invocation.
+  # always-on by convention; set false only if you want SQLite-only.
+  jsonl: true
+  # SQLite at $WIRETAP_DIR/wiretap.db. opt-in. WAL mode; written by both wiretap-rpcx (Go)
+  # and the mitmproxy addon (Python).
+  sqlite: true
+  # payloads larger than this are truncated with a `__truncated_at_bytes":N` marker.
+  # default 1 MiB (1048576).
+  truncate_payload_bytes: 1048576
+  # files/rows older than this duration are pruned (initial pass on startup,
+  # then hourly). Accepts time.ParseDuration syntax plus `Nd` (days) and `Nw`
+  # (weeks). Single-unit only: use `36h` not `1d12h`. Empty / 0 disables.
+  retention: 2h
+  # statuses to filter at write time. Sink.Emit still returns normally so the
+  # proxy contract is unchanged, but writers skip these statuses — keeps
+  # captures clean when an upstream is down. Set [] (or omit) to record all.
+  #
+  # rpcx-channel statuses:
+  #   ok                — paired request/response, no error
+  #   error             — response carried `__rpcx_error__` (server-side failure)
+  #   dial_error        — proxy could not reach the upstream service
+  #   upstream_closed   — connection drained (no response before close)
+  #   shutdown          — pending entry flushed at proxy shutdown (ctx cancel)
+  #
+  # http-channel statuses (set by the mitmproxy addon):
+  #   "<numeric>"       — http status code as a string ("200", "404", "502", …)
+  drop_statuses: ["dial_error", "upstream_closed"]
+
+# Each proxy entry adds one shadow listener. Point your service at the listen
+# port via whatever address-override mechanism your stack supports; wiretap
+# forwards to the configured upstream and records each message.
+#
+# Suggested port plan when shadowing multiple clients of the same service:
+#   pick a unique prefix per client (e.g. 1xxxx for client-a, 2xxxx for client-b)
+#   keep the last 4 digits matching the real upstream port for grepability.
+#
+# Each entry stamps src/dst onto captured rows. src is optional (best-effort
+# label); dst is required.
+proxies:
+  # ── client-a outbound ─────────────────────────────────────────────────────
+  - {kind: rpcx, listen: ":18987", upstream: "127.0.0.1:8987", src: "client-a", dst: "service-x"}
+  - {kind: rpcx, listen: ":18989", upstream: "127.0.0.1:8989", src: "client-a", dst: "service-y"}
+
+  # ── client-b outbound (same services, different src label) ────────────────
+  - {kind: rpcx, listen: ":28987", upstream: "127.0.0.1:8987", src: "client-b", dst: "service-x"}
+  - {kind: rpcx, listen: ":28989", upstream: "127.0.0.1:8989", src: "client-b", dst: "service-y"}
+
+  # ── client-b → client-a (e.g. a saga/RPC trigger) ─────────────────────────
+  - {kind: rpcx, listen: ":18972", upstream: "127.0.0.1:8972", src: "client-b", dst: "client-a"}
+
+  # ── http capture ──────────────────────────────────────────────────────────
+  # http is handled by a separate mitmweb process, not wiretap-rpcx. launch via:
+  #   WT_HTTP_SRC=client-c WT_HTTP_DST=service-z WT_HTTP_UPSTREAM=http://localhost:4344 ./bin/wt-mitmweb
+  # the addon writes to the same JSONL/SQLite store.

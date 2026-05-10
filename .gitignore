@@ -1,0 +1,24 @@
+# build artifacts
+/bin/wiretap-rpcx
+/wiretap-rpcx
+*.test
+*.out
+coverage.out
+
+# captured data (in-tree if user runs with --dir=. for some reason)
+*.jsonl
+wiretap.db
+wiretap.db-shm
+wiretap.db-wal
+
+# python venv for tests (mitmproxy + pytest)
+python/.venv/
+python/__pycache__/
+python/.pytest_cache/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+
+.run

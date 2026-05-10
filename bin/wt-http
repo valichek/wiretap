@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# wt-http — open the mitmweb browser UI.
+
+URL="${WIRETAP_MITMWEB_URL:-http://localhost:18081}"
+
+if command -v open &>/dev/null; then
+    exec open "$URL"
+elif command -v xdg-open &>/dev/null; then
+    exec xdg-open "$URL"
+else
+    echo "open mitmweb at $URL" >&2
+fi

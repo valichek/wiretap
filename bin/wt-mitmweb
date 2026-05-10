@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# wt-mitmweb — launch mitmweb with the wiretap addon as a reverse proxy in
+# front of an HTTP upstream. Invoked by the `wiretap-mitmweb (local)` IDE run
+# config and runnable directly from the shell.
+#
+# config via env vars (override per-invocation):
+#   WT_HTTP_SRC       — src label stamped on captured rows (default: "client")
+#   WT_HTTP_DST       — dst label                         (default: "upstream")
+#   WT_HTTP_UPSTREAM  — upstream URL                       (default: http://localhost:4344)
+#   WT_HTTP_LISTEN    — mitmweb listen port                (default: 14344)
+#   WT_HTTP_WEB_PORT  — mitmweb web UI port                (default: 18081)
+#   WIRETAP_DIR       — capture directory                  (default: ~/.wiretap)
+#   WIRETAP_ADDON     — addon script path                  (default: ./python/mitm_addon.py)
+#
+# requires: pip install mitmproxy
+
+set -euo pipefail
+
+export WIRETAP_DIR="${WIRETAP_DIR:-$HOME/.wiretap}"
+mkdir -p "$WIRETAP_DIR"
+
+WT_HTTP_SRC="${WT_HTTP_SRC:-client}"
+WT_HTTP_DST="${WT_HTTP_DST:-upstream}"
+WT_HTTP_UPSTREAM="${WT_HTTP_UPSTREAM:-http://localhost:4344}"
+WT_HTTP_LISTEN="${WT_HTTP_LISTEN:-14344}"
+WT_HTTP_WEB_PORT="${WT_HTTP_WEB_PORT:-18081}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WIRETAP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ADDON="${WIRETAP_ADDON:-$WIRETAP_ROOT/python/mitm_addon.py}"
+
+# prefer the venv's mitmweb — brew's cask bundles a Python without `sqlite3`,
+# which the addon needs. The venv lives at $WIRETAP_ROOT/python/.venv (created
+# by `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`).
+VENV_MITMWEB="$WIRETAP_ROOT/python/.venv/bin/mitmweb"
+if [[ -x "$VENV_MITMWEB" ]]; then
+    MITMWEB_BIN="$VENV_MITMWEB"
+elif command -v mitmweb &>/dev/null; then
+    MITMWEB_BIN="$(command -v mitmweb)"
+    echo "warning: using system mitmweb; if it errors on 'No module named sqlite3'," >&2
+    echo "         create the wiretap venv:" >&2
+    echo "         cd $WIRETAP_ROOT/python && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+else
+    echo "mitmweb not found; install with:" >&2
+    echo "  cd $WIRETAP_ROOT/python && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+    exit 1
+fi
+
+exec "$MITMWEB_BIN" \
+    --mode "reverse:${WT_HTTP_UPSTREAM}" \
+    --listen-port "${WT_HTTP_LISTEN}" \
+    --web-port "${WT_HTTP_WEB_PORT}" \
+    --set web_open_browser=false \
+    --set "src=${WT_HTTP_SRC}" --set "dst=${WT_HTTP_DST}" \
+    -s "$ADDON" \
+    "$@"

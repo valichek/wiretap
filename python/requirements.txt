@@ -1,0 +1,2 @@
+mitmproxy>=10.0
+pytest>=7.0

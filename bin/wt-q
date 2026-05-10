@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# wt-q — query wiretap.db via sqlite3. Arguments are passed verbatim to sqlite3.
+#
+#   wt-q                                          # interactive shell
+#   wt-q "SELECT * FROM messages LIMIT 5"         # one-shot query
+#   wt-q -json "SELECT * FROM messages WHERE ..." # json output
+
+set -euo pipefail
+
+WIRETAP_DIR="${WIRETAP_DIR:-$HOME/.wiretap}"
+DB="$WIRETAP_DIR/wiretap.db"
+
+if [[ ! -f "$DB" ]]; then
+    echo "$DB does not exist (sqlite store may be disabled in wiretap.yaml)" >&2
+    exit 1
+fi
+
+exec sqlite3 "$DB" "$@"

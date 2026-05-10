@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# wt-rpc — tail the latest rpcx-*.jsonl by mtime, optionally piped through a
+# jq filter expression passed as the first arg.
+#
+#   wt-rpc                                  # tail with default jq formatter
+#   wt-rpc 'select(.dst == "service-x")'    # tail filtered by dst
+
+set -euo pipefail
+
+WIRETAP_DIR="${WIRETAP_DIR:-$HOME/.wiretap}"
+
+LATEST="$(ls -t "$WIRETAP_DIR"/rpcx-*.jsonl 2>/dev/null | head -1 || true)"
+if [[ -z "$LATEST" ]]; then
+    echo "no rpcx-*.jsonl files in $WIRETAP_DIR" >&2
+    exit 1
+fi
+
+if [[ "$#" -gt 0 ]]; then
+    exec tail -f "$LATEST" | jq -c "$@"
+else
+    exec tail -f "$LATEST" | jq -c .
+fi
